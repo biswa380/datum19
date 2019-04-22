@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+import org.bson.Document;
 import org.sdrc.datum19.document.AllChecklistFormData;
 import org.sdrc.datum19.document.DataValue;
 import org.sdrc.datum19.document.Indicator;
@@ -31,6 +32,11 @@ import org.springframework.data.mongodb.core.aggregation.UnwindOperation;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.stereotype.Service;
 
+/*
+ * author : Biswabhusan Pradhan
+ * email : biswabhusan@sdrc.co.in
+ * 
+ */
 
 @Service
 public class MongoAggregationService {
@@ -49,15 +55,20 @@ public class MongoAggregationService {
 	@Autowired
 	private DataDomainRepository dataDomainRepository;
 	
-	List<Map> submissionList;
-	List<DataValue> dataValueList;
 	Integer timePeriodId=null;
 	public String aggregate(Integer tp, String periodicity){
+		List<DataValue> dataValueList;
 		timePeriodId=tp;
-		submissionList=new ArrayList<>();
 		dataValueList=new ArrayList<>();
 		List<Indicator> indicatorList = indicatorRepository.getIndicatorByPeriodicity(periodicity);
-		indicatorList.forEach(indicator->{
+		indicatorList.stream().filter(indicator->!indicator.getIndicatorDataMap().get("collection").equals("dataValue")).forEach(indicator->{
+			Class<?> clazz=null;
+			try {
+				clazz=Class.forName(String.valueOf(indicator.getIndicatorDataMap().get("collection")));
+			} catch (ClassNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 			switch (String.valueOf(indicator.getIndicatorDataMap().get("parentType"))) {
 			case "dropdown":
 				List<Integer> tdlist=new ArrayList<>();
@@ -68,7 +79,7 @@ public class MongoAggregationService {
 						String.valueOf(indicator.getIndicatorDataMap().get("collection")),
 						String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
 						tdlist,
-						String.valueOf(indicator.getIndicatorDataMap().get("indicatorName"))),AllChecklistFormData.class, Map.class).getMappedResults();
+						String.valueOf(indicator.getIndicatorDataMap().get("indicatorName"))),clazz, Map.class).getMappedResults();
 				dataList.forEach(data->{
 					DataValue datadoc=new DataValue();
 					datadoc.setInid(Integer.valueOf(String.valueOf(indicator.getIndicatorDataMap().get("indicatorNid"))));
@@ -87,7 +98,7 @@ public class MongoAggregationService {
 						String.valueOf(indicator.getIndicatorDataMap().get("collection")),
 						String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
 						 String.valueOf(indicator.getIndicatorDataMap().get("parentColumn")),
-						 String.valueOf(indicator.getIndicatorDataMap().get("indicatorName"))),AllChecklistFormData.class, Map.class).getMappedResults();
+						 String.valueOf(indicator.getIndicatorDataMap().get("indicatorName"))),clazz, Map.class).getMappedResults();
 				tableDataList.forEach(data->{
 					DataValue datadoc=new DataValue();
 					datadoc.setInid(Integer.valueOf(String.valueOf(indicator.getIndicatorDataMap().get("indicatorNid"))));
@@ -106,7 +117,7 @@ public class MongoAggregationService {
 						 String.valueOf(indicator.getIndicatorDataMap().get("area")),
 						String.valueOf(indicator.getIndicatorDataMap().get("collection")),
 						String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
-						String.valueOf(indicator.getIndicatorDataMap().get("indicatorName"))),AllChecklistFormData.class, Map.class).getMappedResults();
+						String.valueOf(indicator.getIndicatorDataMap().get("indicatorName"))),clazz, Map.class).getMappedResults();
 				
 				numericDataList.forEach(data->{
 					DataValue datadoc=new DataValue();
@@ -127,8 +138,8 @@ public class MongoAggregationService {
 							String.valueOf(indicator.getIndicatorDataMap().get("area")), 
 							String.valueOf(indicator.getIndicatorDataMap().get("collection")), 
 							String.valueOf(indicator.getIndicatorDataMap().get("indicatorName")),
-							String.valueOf(indicator.getIndicatorDataMap().get("numerator"))), AllChecklistFormData.class,Map.class).getMappedResults();
-					System.out.println("uniqueCountData :: "+uniqueCountData);
+							String.valueOf(indicator.getIndicatorDataMap().get("numerator"))), clazz,Map.class).getMappedResults();
+//					System.out.println("uniqueCountData :: "+uniqueCountData);
 					uniqueCountData.forEach(data->{
 						DataValue datadoc=new DataValue();
 						datadoc.setInid(Integer.valueOf(String.valueOf(indicator.getIndicatorDataMap().get("indicatorNid"))));
@@ -143,7 +154,7 @@ public class MongoAggregationService {
 				case "total":
 				List<Map> visitCountData=mongoTemplate.aggregate(getTotalVisitCount(
 						Integer.valueOf((String) indicator.getIndicatorDataMap().get("formId")), 
-						String.valueOf(indicator.getIndicatorDataMap().get("area"))), AllChecklistFormData.class,Map.class).getMappedResults();
+						String.valueOf(indicator.getIndicatorDataMap().get("area"))), clazz,Map.class).getMappedResults();
 				visitCountData.forEach(data->{
 					DataValue datadoc=new DataValue();
 					datadoc.setInid(Integer.valueOf(String.valueOf(indicator.getIndicatorDataMap().get("indicatorNid"))));
@@ -163,7 +174,7 @@ public class MongoAggregationService {
 						Integer.valueOf((String) indicator.getIndicatorDataMap().get("formId")), 
 						String.valueOf(indicator.getIndicatorDataMap().get("area")),
 						String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
-						value,String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule"))),AllChecklistFormData.class,Map.class).getMappedResults();
+						value,String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule"))),clazz,Map.class).getMappedResults();
 				gteCountData.forEach(data->{
 					DataValue datadoc=new DataValue();
 					datadoc.setInid(Integer.valueOf(String.valueOf(indicator.getIndicatorDataMap().get("indicatorNid"))));
@@ -182,7 +193,7 @@ public class MongoAggregationService {
 							Integer.valueOf((String) indicator.getIndicatorDataMap().get("formId")), 
 							String.valueOf(indicator.getIndicatorDataMap().get("area")),
 							String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
-							valueList,String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule"))),AllChecklistFormData.class,Map.class).getMappedResults();
+							valueList,String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule"))),clazz,Map.class).getMappedResults();
 					repeatCountData.forEach(data->{
 						DataValue datadoc=new DataValue();
 						datadoc.setInid(Integer.valueOf(String.valueOf(indicator.getIndicatorDataMap().get("indicatorNid"))));
@@ -191,7 +202,6 @@ public class MongoAggregationService {
 						datadoc.setTp(tp);
 						datadoc.set_case(String.valueOf(indicator.getIndicatorDataMap().get("aggregationType")));
 						dataValueList.add(datadoc);
-						System.out.println(data);
 					});
 					break;
 
@@ -199,6 +209,25 @@ public class MongoAggregationService {
 					break;
 				}
 				
+				break;
+				
+			case "area":
+				String[] rules= String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule")).split(";");
+				Integer value1=Integer.parseInt(String.valueOf(indicator.getIndicatorDataMap().get("typeDetailId")));
+				List<Map> areaCountData=mongoTemplate.aggregate(getAreaCount(
+						String.valueOf(indicator.getIndicatorDataMap().get("area")),
+						String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
+						value1,rules),clazz,Map.class).getMappedResults();
+				areaCountData.forEach(data->{
+					System.out.println(data);
+					DataValue datadoc=new DataValue();
+					datadoc.setInid(Integer.valueOf(String.valueOf(indicator.getIndicatorDataMap().get("indicatorNid"))));
+					datadoc.setAreaId(Integer.valueOf(String.valueOf(data.get("_id"))));
+					datadoc.setDataValue(Double.valueOf(String.valueOf(data.get("dataValue"))));
+					datadoc.setTp(tp);
+					datadoc.set_case(String.valueOf(indicator.getIndicatorDataMap().get("aggregationType")));
+					dataValueList.add(datadoc);
+				});
 				break;
 				
 			default:
@@ -213,7 +242,7 @@ public class MongoAggregationService {
 				AreaMapObject amb = areaService.getAreaForAggregation(i);
 				Map<Integer, Integer> areaMap= amb.getAreaMap();
 				List<Integer> areaList=amb.getAreaList();
-				System.out.println(areaList);
+//				System.out.println(areaList);
 			List<Map> areaDataMap=mongoTemplate.aggregate(aggregateAreaTree(tp,areaList),DataValue.class,Map.class).getMappedResults();
 			List<DataValue> datalist2=new ArrayList<>();
 			areaDataMap.forEach(data->{
@@ -262,7 +291,7 @@ public class MongoAggregationService {
 //					percentDataMapAll.add(dv);
 				});
 				percentDataMapAll.addAll(percentDataMap);
-				System.out.println(percentDataMap);
+//				System.out.println(percentDataMap);
 			} catch (Exception e) {
 				// TODO: handle exception
 				e.printStackTrace();
@@ -371,5 +400,28 @@ public class MongoAggregationService {
 				.thenValueOf(Sum.sumOf("totalcount")).otherwise(0)).as("repeatCount");
 		GroupOperation groupOperation2=Aggregation.group(path,area.split("\\.")[1]).count().as("dataValue");
 		return Aggregation.newAggregation(matchOperation,projectionOperation,groupOperation,projectionOperation2,groupOperation2);
+	}
+	
+	public Aggregation getAreaCount(String area, String path,Integer value,String[] rules) {
+		Criteria criteria = Criteria.where(path).is(value);
+
+		List<Criteria> docCriterias = new ArrayList<Criteria>();
+
+		for (String rule: rules) {
+			switch (rule.split("\\(")[0]) {
+			case "eq":
+				criteria=criteria.and(rule.split("\\(")[1].split(":")[0]).is(Integer.parseInt(rule.split("\\(")[1].split(":")[1].split("\\)")[0]));
+//				docCriterias.add(Criteria.where(rule.split("\\(")[1].split(":")[0]).is(rule.split("\\(")[1].split(":")[1].split("\\)")[0]));
+				break;
+
+			default:
+				break;
+			}
+		    
+		}
+//		criteria = criteria.andOperator(docCriterias.toArray(new Criteria[rules.length]));
+		MatchOperation matchOperation = Aggregation.match(criteria);
+		GroupOperation groupOperation=Aggregation.group(area).count().as("dataValue");
+		return Aggregation.newAggregation(matchOperation,groupOperation);
 	}
 }

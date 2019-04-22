@@ -20,6 +20,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.stereotype.Service;
 
+/*
+ * author : Biswabhusan Pradhan
+ * email : biswabhusan@sdrc.co.in
+ * 
+ */
+
 @Service
 public class IndicatorConfigService {
 	

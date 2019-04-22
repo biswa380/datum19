@@ -1,6 +1,7 @@
 package org.sdrc.datum19.document;
 
 import java.io.Serializable;
+import java.util.Map;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -24,7 +25,7 @@ public class Area implements Serializable{
 
 	@Id
 	private String id;
-	
+
 	private Integer areaId;
 
 	private String areaName;
@@ -36,6 +37,34 @@ public class Area implements Serializable{
 	private Boolean live;
 
 	private AreaLevel areaLevel;
+
+	private Integer facilitytId;
+	
+	private Integer blockId;
+
+	private Integer districtId;
+
+	private Integer stateId;
+
+	private String createdBy;
+	
+	private TypeDetail facilityType;
+	
+	private TypeDetail facilityLevel;
+	
+	private Map<String, Object> phcChcType;
+	
+	private Boolean hwc;
+	
+	private Map<String, Object> formIdTypeDetails;
+	
+	public Area() {
+		super();
+	}
+
+	public Area(int areaId) {
+		this.areaId = areaId;
+	}
 
 	
 	

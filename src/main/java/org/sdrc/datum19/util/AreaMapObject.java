@@ -5,6 +5,12 @@ import java.util.Map;
 
 import lombok.Data;
 
+/*
+ * author : Biswabhusan Pradhan
+ * email : biswabhusan@sdrc.co.in
+ * 
+ */
+
 @Data
 public class AreaMapObject {
 	private List<Integer> areaList;

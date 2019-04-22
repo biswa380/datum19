@@ -12,6 +12,12 @@ import org.sdrc.datum19.util.AreaMapObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+/*
+ * author : Biswabhusan Pradhan
+ * email : biswabhusan@sdrc.co.in
+ * 
+ */
+
 @Service
 public class AreaService {
 

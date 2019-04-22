@@ -2,6 +2,12 @@ package org.sdrc.datum19.util;
 
 import lombok.Data;
 
+/*
+ * author : Biswabhusan Pradhan
+ * email : biswabhusan@sdrc.co.in
+ * 
+ */
+
 @Data
 public class DataValue {
 	private String _id;
