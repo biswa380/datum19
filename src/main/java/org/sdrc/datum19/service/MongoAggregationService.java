@@ -17,9 +17,11 @@ import org.sdrc.datum19.util.AreaMapObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.aggregation.AccumulatorOperators.Sum;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
 import org.springframework.data.mongodb.core.aggregation.ArithmeticOperators.Divide;
 import org.springframework.data.mongodb.core.aggregation.ArithmeticOperators.Multiply;
+import org.springframework.data.mongodb.core.aggregation.Fields;
 import org.springframework.data.mongodb.core.aggregation.GroupOperation;
 import org.springframework.data.mongodb.core.aggregation.LookupOperation;
 import org.springframework.data.mongodb.core.aggregation.MatchOperation;
@@ -49,8 +51,9 @@ public class MongoAggregationService {
 	
 	List<Map> submissionList;
 	List<DataValue> dataValueList;
-	
+	Integer timePeriodId=null;
 	public String aggregate(Integer tp, String periodicity){
+		timePeriodId=tp;
 		submissionList=new ArrayList<>();
 		dataValueList=new ArrayList<>();
 		List<Indicator> indicatorList = indicatorRepository.getIndicatorByPeriodicity(periodicity);
@@ -58,10 +61,10 @@ public class MongoAggregationService {
 			switch (String.valueOf(indicator.getIndicatorDataMap().get("parentType"))) {
 			case "dropdown":
 				List<Integer> tdlist=new ArrayList<>();
-				Arrays.asList(String.valueOf(indicator.getIndicatorDataMap().get("typeDetailId")).split(",")).stream().forEach(i->{tdlist.add(Integer.parseInt(i));});
+				Arrays.asList(String.valueOf(indicator.getIndicatorDataMap().get("typeDetailId")).split("#")).stream().forEach(i->{tdlist.add(Integer.parseInt(i));});
 				List<Map> dataList= mongoTemplate.aggregate(getDropdownAggregationResults(
 						Integer.valueOf((String) indicator.getIndicatorDataMap().get("formId")),
-						 String.valueOf(indicator.getIndicatorDataMap().get("area")).split("block#")[1],
+						 String.valueOf(indicator.getIndicatorDataMap().get("area")),
 						String.valueOf(indicator.getIndicatorDataMap().get("collection")),
 						String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
 						tdlist,
@@ -80,7 +83,7 @@ public class MongoAggregationService {
 			case "table":
 				List<Map> tableDataList= mongoTemplate.aggregate(getTableAggregationResults(
 						Integer.valueOf((String) indicator.getIndicatorDataMap().get("formId")),
-						 String.valueOf(indicator.getIndicatorDataMap().get("area")).split("block#")[1],
+						 String.valueOf(indicator.getIndicatorDataMap().get("area")),
 						String.valueOf(indicator.getIndicatorDataMap().get("collection")),
 						String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
 						 String.valueOf(indicator.getIndicatorDataMap().get("parentColumn")),
@@ -100,7 +103,7 @@ public class MongoAggregationService {
 			case "numeric":
 				List<Map> numericDataList= mongoTemplate.aggregate(getNumericAggregationResults(
 						Integer.valueOf((String) indicator.getIndicatorDataMap().get("formId")),
-						 String.valueOf(indicator.getIndicatorDataMap().get("area")).split("block#")[1],
+						 String.valueOf(indicator.getIndicatorDataMap().get("area")),
 						String.valueOf(indicator.getIndicatorDataMap().get("collection")),
 						String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
 						String.valueOf(indicator.getIndicatorDataMap().get("indicatorName"))),AllChecklistFormData.class, Map.class).getMappedResults();
@@ -117,11 +120,11 @@ public class MongoAggregationService {
 				break;
 				
 			case "form":
-				switch (String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule"))) {
+				switch (String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule")).split(":")[0]) {
 				case "unique":
 					List<Map> uniqueCountData=mongoTemplate.aggregate(getUniqueCount(
 							Integer.valueOf((String) indicator.getIndicatorDataMap().get("formId")), 
-							String.valueOf(indicator.getIndicatorDataMap().get("area")).split("block#")[1], 
+							String.valueOf(indicator.getIndicatorDataMap().get("area")), 
 							String.valueOf(indicator.getIndicatorDataMap().get("collection")), 
 							String.valueOf(indicator.getIndicatorDataMap().get("indicatorName")),
 							String.valueOf(indicator.getIndicatorDataMap().get("numerator"))), AllChecklistFormData.class,Map.class).getMappedResults();
@@ -140,7 +143,7 @@ public class MongoAggregationService {
 				case "total":
 				List<Map> visitCountData=mongoTemplate.aggregate(getTotalVisitCount(
 						Integer.valueOf((String) indicator.getIndicatorDataMap().get("formId")), 
-						String.valueOf(indicator.getIndicatorDataMap().get("area")).split("block#")[1]), AllChecklistFormData.class,Map.class).getMappedResults();
+						String.valueOf(indicator.getIndicatorDataMap().get("area"))), AllChecklistFormData.class,Map.class).getMappedResults();
 				visitCountData.forEach(data->{
 					DataValue datadoc=new DataValue();
 					datadoc.setInid(Integer.valueOf(String.valueOf(indicator.getIndicatorDataMap().get("indicatorNid"))));
@@ -153,12 +156,14 @@ public class MongoAggregationService {
 					break;
 					
 				case "gte":
+				case "lte":
+				case "eq":
 				Integer value=Integer.parseInt(String.valueOf(indicator.getIndicatorDataMap().get("typeDetailId")));
 				List<Map> gteCountData=mongoTemplate.aggregate(getGreaterThanCount(
 						Integer.valueOf((String) indicator.getIndicatorDataMap().get("formId")), 
-						String.valueOf(indicator.getIndicatorDataMap().get("area")).split("block#")[1],
+						String.valueOf(indicator.getIndicatorDataMap().get("area")),
 						String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
-						value),AllChecklistFormData.class,Map.class).getMappedResults();
+						value,String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule"))),AllChecklistFormData.class,Map.class).getMappedResults();
 				gteCountData.forEach(data->{
 					DataValue datadoc=new DataValue();
 					datadoc.setInid(Integer.valueOf(String.valueOf(indicator.getIndicatorDataMap().get("indicatorNid"))));
@@ -168,6 +173,26 @@ public class MongoAggregationService {
 					datadoc.set_case(String.valueOf(indicator.getIndicatorDataMap().get("aggregationType")));
 					dataValueList.add(datadoc);
 				});
+					break;
+				case "repeatCount":
+					Integer value1=Integer.parseInt(String.valueOf(indicator.getIndicatorDataMap().get("typeDetailId")));
+					List<Integer> valueList=new ArrayList<>();
+					Arrays.asList(String.valueOf(indicator.getIndicatorDataMap().get("typeDetailId")).split("#")).stream().forEach(i->{valueList.add(Integer.parseInt(i));});
+					List<Map> repeatCountData=mongoTemplate.aggregate(getRepeatCountQuery(
+							Integer.valueOf((String) indicator.getIndicatorDataMap().get("formId")), 
+							String.valueOf(indicator.getIndicatorDataMap().get("area")),
+							String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
+							valueList,String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule"))),AllChecklistFormData.class,Map.class).getMappedResults();
+					repeatCountData.forEach(data->{
+						DataValue datadoc=new DataValue();
+						datadoc.setInid(Integer.valueOf(String.valueOf(indicator.getIndicatorDataMap().get("indicatorNid"))));
+						datadoc.setAreaId(Integer.valueOf(String.valueOf(data.get(String.valueOf(indicator.getIndicatorDataMap().get("area")).split("\\.")[1]))));
+						datadoc.setDataValue(Double.valueOf(String.valueOf(data.get("dataValue"))));
+						datadoc.setTp(tp);
+						datadoc.set_case(String.valueOf(indicator.getIndicatorDataMap().get("aggregationType")));
+						dataValueList.add(datadoc);
+						System.out.println(data);
+					});
 					break;
 
 				default:
@@ -310,10 +335,41 @@ public class MongoAggregationService {
 		return Aggregation.newAggregation(matchOperation,projectionOperation,groupOperation);
 	}
 	
-	public Aggregation getGreaterThanCount(Integer formId, String area, String path, Integer value) {
-		MatchOperation matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).gte(value));
+	public Aggregation getGreaterThanCount(Integer formId, String area, String path, Integer value, String rule) {
+		MatchOperation matchOperation=null;
+		switch (rule) {
+		case "eq":
+			matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).is(value));
+			break;
+		case "lte":
+			matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).lte(value));
+			break;
+		case "gte":
+			matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).gte(value));
+			break;
+		case "gt":
+			matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).gt(value));
+			break;
+		case "lt":
+			matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).lt(value));
+			break;
+
+		default:
+			break;
+		}
+		
 		ProjectionOperation projectionOperation=Aggregation.project().and("data").as("data");
 		GroupOperation groupOperation=Aggregation.group(area).count().as("dataValue");
 		return Aggregation.newAggregation(matchOperation,projectionOperation,groupOperation);
+	}
+	
+	public Aggregation getRepeatCountQuery(Integer formId, String area, String path, List<Integer> valueList,String query) {
+		MatchOperation matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).in(valueList).and("timePeriod.timePeriodId").is(timePeriodId));
+		ProjectionOperation projectionOperation=Aggregation.project().and("data").as("data");
+		GroupOperation groupOperation=Aggregation.group(query.split(":")[1],"data."+path,area).count().as("totalcount");
+		ProjectionOperation projectionOperation2=Aggregation.project(path,area.split("\\.")[1]).and(when(where("totalcount").gt(1))
+				.thenValueOf(Sum.sumOf("totalcount")).otherwise(0)).as("repeatCount");
+		GroupOperation groupOperation2=Aggregation.group(path,area.split("\\.")[1]).count().as("dataValue");
+		return Aggregation.newAggregation(matchOperation,projectionOperation,groupOperation,projectionOperation2,groupOperation2);
 	}
 }
