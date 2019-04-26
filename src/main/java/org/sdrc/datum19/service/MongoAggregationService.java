@@ -131,7 +131,7 @@ public class MongoAggregationService {
 				break;
 				
 			case "form":
-				switch (String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule")).split(":")[0]) {
+				switch (String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule")).split("\\(")[0]) {
 				case "unique":
 					List<Map> uniqueCountData=mongoTemplate.aggregate(getUniqueCount(
 							Integer.valueOf((String) indicator.getIndicatorDataMap().get("formId")), 
@@ -186,7 +186,7 @@ public class MongoAggregationService {
 				});
 					break;
 				case "repeatCount":
-					Integer value1=Integer.parseInt(String.valueOf(indicator.getIndicatorDataMap().get("typeDetailId")));
+					Integer value1=!indicator.getIndicatorDataMap().get("typeDetailId").equals(null)?Integer.parseInt(String.valueOf(indicator.getIndicatorDataMap().get("typeDetailId"))):null;
 					List<Integer> valueList=new ArrayList<>();
 					Arrays.asList(String.valueOf(indicator.getIndicatorDataMap().get("typeDetailId")).split("#")).stream().forEach(i->{valueList.add(Integer.parseInt(i));});
 					List<Map> repeatCountData=mongoTemplate.aggregate(getRepeatCountQuery(
@@ -326,11 +326,24 @@ public class MongoAggregationService {
 	
 	
 	
+//	public Aggregation getDropdownAggregationResults(Integer formId, String area, String collection, String path, List<Integer> tdlist,String name) {
+//		MatchOperation matchOperation = Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).in(tdlist));
+//		ProjectionOperation projectionOperation=Aggregation.project().and("data").as("data");
+//		GroupOperation groupOperation= Aggregation.group(area).count().as("value");
+//		return Aggregation.newAggregation(matchOperation,projectionOperation,groupOperation);
+//	}
+	
+//	for count of 0 records
 	public Aggregation getDropdownAggregationResults(Integer formId, String area, String collection, String path, List<Integer> tdlist,String name) {
-		MatchOperation matchOperation = Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).in(tdlist));
+		MatchOperation matchOperation = Aggregation.match(Criteria.where("formId").is(formId));
 		ProjectionOperation projectionOperation=Aggregation.project().and("data").as("data");
-		GroupOperation groupOperation= Aggregation.group(area).count().as("value");
-		return Aggregation.newAggregation(matchOperation,projectionOperation,groupOperation);
+		ProjectionOperation projectionOperation1=Aggregation.project()
+				.and(area).as("area")
+				.and(Sum.sumOf(when(where("data."+path).in(tdlist)).then(1).otherwise(0))).as("projectedData");
+		
+		GroupOperation groupOperation= Aggregation.group("area").sum("projectedData").as("value");
+		
+		return Aggregation.newAggregation(matchOperation,projectionOperation,projectionOperation1,groupOperation);
 	}
 	
 	public Aggregation getTableAggregationResults(Integer formId, String area, String collection, String path, String table,String name) {
@@ -395,7 +408,7 @@ public class MongoAggregationService {
 	public Aggregation getRepeatCountQuery(Integer formId, String area, String path, List<Integer> valueList,String query) {
 		MatchOperation matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).in(valueList).and("timePeriod.timePeriodId").is(timePeriodId));
 		ProjectionOperation projectionOperation=Aggregation.project().and("data").as("data");
-		GroupOperation groupOperation=Aggregation.group(query.split(":")[1],"data."+path,area).count().as("totalcount");
+		GroupOperation groupOperation=Aggregation.group(query.split("\\(")[1].split("\\)")[0],"data."+path,area).count().as("totalcount");
 		ProjectionOperation projectionOperation2=Aggregation.project(path,area.split("\\.")[1]).and(when(where("totalcount").gt(1))
 				.thenValueOf(Sum.sumOf("totalcount")).otherwise(0)).as("repeatCount");
 		GroupOperation groupOperation2=Aggregation.group(path,area.split("\\.")[1]).count().as("dataValue");

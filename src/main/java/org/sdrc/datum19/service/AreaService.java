@@ -30,11 +30,9 @@ public class AreaService {
 	public AreaMapObject getAreaForAggregation(Integer areaLevel){
 		AreaMapObject amb = new AreaMapObject();
 		Map<Integer, Integer> areaMap=new HashMap<Integer, Integer>();
-		for (int i = areaLevel; i >= 0; i--) {
-		List<Area> areaList = areaRepo.findByAreaLevel(areaLevelRepository.findByAreaLevelId(i));
 		List<Integer> childIds=new ArrayList<Integer>();
 //		areaList.forEach(area->{
-			List<Area> childList=areaRepo.findByParentAreaIdOrderByAreaName(areaLevel);
+			List<Area> childList=areaRepo.findByAreaLevel(areaLevelRepository.findByAreaLevelId(areaLevel));
 			childList.forEach(child->{
 				childIds.add(child.getAreaId());
 				areaMap.put(child.getAreaId(), child.getParentAreaId());
@@ -42,7 +40,6 @@ public class AreaService {
 //		});
 		amb.setAreaList(childIds);
 		amb.setAreaMap(areaMap);
-	}
 		return amb;
 	}
 }
