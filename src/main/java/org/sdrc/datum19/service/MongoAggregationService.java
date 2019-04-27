@@ -320,7 +320,7 @@ public class MongoAggregationService {
 				.and("_id.tp").as("tp").and("numerator").as("numerator").and("denominator").as("denominator")
 				.andExclude("_id")
 				.and(when(where("denominator").gt(0)).thenValueOf(Divide.valueOf(Multiply.valueOf("numerator")
-				.multiplyBy(100)).divideBy("denominator")).otherwise(0)).as("dataValue");
+				.multiplyBy(100)).divideBy("denominator")).otherwise(null)).as("dataValue");
 		return Aggregation.newAggregation(DataValue.class,matchOperation,groupOperation,projectionOperation);
 	}
 	
