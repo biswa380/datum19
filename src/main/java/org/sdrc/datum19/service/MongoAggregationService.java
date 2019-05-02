@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.bson.Document;
 import org.sdrc.datum19.document.AllChecklistFormData;
@@ -20,7 +21,7 @@ import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.AccumulatorOperators.Sum;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
-import org.springframework.data.mongodb.core.aggregation.ArithmeticOperators.Divide;
+import org.springframework.data.mongodb.core.aggregation.ArithmeticOperators.*;
 import org.springframework.data.mongodb.core.aggregation.ArithmeticOperators.Multiply;
 import org.springframework.data.mongodb.core.aggregation.Fields;
 import org.springframework.data.mongodb.core.aggregation.GroupOperation;
@@ -56,8 +57,9 @@ public class MongoAggregationService {
 	private DataDomainRepository dataDomainRepository;
 	
 	Integer timePeriodId=null;
+	List<DataValue> dataValueList;
 	public String aggregate(Integer tp, String periodicity){
-		List<DataValue> dataValueList;
+		dataValueList=new ArrayList<>();
 		timePeriodId=tp;
 		dataValueList=new ArrayList<>();
 		List<Indicator> indicatorList = indicatorRepository.getIndicatorByPeriodicity(periodicity);
@@ -169,8 +171,10 @@ public class MongoAggregationService {
 				case "gte":
 				case "lte":
 				case "eq":
+				case "gt":
+				case "lt":
 				Integer value=Integer.parseInt(String.valueOf(indicator.getIndicatorDataMap().get("typeDetailId")));
-				List<Map> gteCountData=mongoTemplate.aggregate(getGreaterThanCount(
+				List<Map> gteCountData=mongoTemplate.aggregate(getCount(
 						Integer.valueOf((String) indicator.getIndicatorDataMap().get("formId")), 
 						String.valueOf(indicator.getIndicatorDataMap().get("area")),
 						String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
@@ -220,6 +224,7 @@ public class MongoAggregationService {
 						value1,rules),clazz,Map.class).getMappedResults();
 				areaCountData.forEach(data->{
 					System.out.println(data);
+					if(!String.valueOf(data.get("_id")).equals("null")) {
 					DataValue datadoc=new DataValue();
 					datadoc.setInid(Integer.valueOf(String.valueOf(indicator.getIndicatorDataMap().get("indicatorNid"))));
 					datadoc.setAreaId(Integer.valueOf(String.valueOf(data.get("_id"))));
@@ -227,6 +232,7 @@ public class MongoAggregationService {
 					datadoc.setTp(tp);
 					datadoc.set_case(String.valueOf(indicator.getIndicatorDataMap().get("aggregationType")));
 					dataValueList.add(datadoc);
+					}
 				});
 				break;
 				
@@ -274,6 +280,7 @@ public class MongoAggregationService {
 			List<Integer> numlist=new ArrayList<>();
 			String[] numerators=String.valueOf(indicator.getIndicatorDataMap().get("numerator")).split(",");
 			Integer inid=Integer.parseInt(String.valueOf(indicator.getIndicatorDataMap().get("indicatorNid")));
+			String aggrule=String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule"));
 			for (int i = 0; i < numerators.length; i++) {
 				numlist.add(Integer.parseInt(numerators[i]));
 				dependencies.add(Integer.parseInt(numerators[i]));
@@ -285,9 +292,10 @@ public class MongoAggregationService {
 				dependencies.add(Integer.parseInt(denominators[i]));
 			}
 			try {
-				percentDataMap=mongoTemplate.aggregate(getPercentData(dependencies,numlist,denolist),DataValue.class,DataValue.class).getMappedResults();
+				percentDataMap=mongoTemplate.aggregate(getPercentData(dependencies,numlist,denolist,aggrule),DataValue.class,DataValue.class).getMappedResults();
 				percentDataMap.forEach(dv->{
 					dv.setInid(inid);
+					dv.set_case("percent");
 //					percentDataMapAll.add(dv);
 				});
 				percentDataMapAll.addAll(percentDataMap);
@@ -312,15 +320,54 @@ public class MongoAggregationService {
 		return Aggregation.newAggregation(DataValue.class,matchOperation,lookupOperation,groupOperation,unwindOperation);
 	}
 	
-	private TypedAggregation<DataValue> getPercentData(List<Integer> dep,List<Integer> num,List<Integer> deno){
+	private TypedAggregation<DataValue> getPercentData(List<Integer> dep,List<Integer> num,List<Integer> deno, String rule){
 		MatchOperation matchOperation = Aggregation.match(Criteria.where("inid").in(dep));
-		GroupOperation groupOperation=Aggregation.group("areaId","tp").sum(when(where("inid").in(num)).thenValueOf("$dataValue").otherwise(0)).as("numerator")
+		GroupOperation groupOperation=null;
+		ProjectionOperation projectionOperation=null;
+		ProjectionOperation p1=null;
+		ProjectionOperation p2=null;
+		if(rule.equals("sub")) {
+			groupOperation=Aggregation.group("areaId","tp").sum(when(where("inid").in(deno)).thenValueOf("$dataValue").otherwise(0)).as("denominator");;
+			
+			projectionOperation=Aggregation.project().and("_id.areaId").as("areaId").and("_id.tp").as("tp")
+					.and(when(where("inid").is(num.get(0))).then("$dataValue").otherwise(0)).as("n1")
+					.and(when(where("inid").is(num.get(1))).then("$dataValue").otherwise(0)).as("n2")
+					;
+			p1=Aggregation.project().and("areaId").as("areaId").and("tp").as("tp").and("n1").minus("n2").as("numerator");
+			
+			p2=Aggregation.project().and("areaId").as("areaId").and("tp").as("tp")
+					.and(when(where("denominator").gt(0)).thenValueOf(Divide.valueOf(Multiply.valueOf("numerator")
+					.multiplyBy(100)).divideBy("denominator")).otherwise(0)).as("dataValue");
+			return Aggregation.newAggregation(DataValue.class,matchOperation,groupOperation,projectionOperation,p1);
+		}else {
+		groupOperation=Aggregation.group("areaId","tp").sum(when(where("inid").in(num)).thenValueOf("$dataValue").otherwise(0)).as("numerator")
 				.sum(when(where("inid").in(deno)).thenValueOf("$dataValue").otherwise(0)).as("denominator");
-		ProjectionOperation projectionOperation=Aggregation.project().and("_id.areaId").as("areaId")
+		projectionOperation=Aggregation.project().and("_id.areaId").as("areaId")
 				.and("_id.tp").as("tp").and("numerator").as("numerator").and("denominator").as("denominator")
 				.andExclude("_id")
 				.and(when(where("denominator").gt(0)).thenValueOf(Divide.valueOf(Multiply.valueOf("numerator")
-				.multiplyBy(100)).divideBy("denominator")).otherwise(null)).as("dataValue");
+				.multiplyBy(100)).divideBy("denominator")).otherwise(0)).as("dataValue");
+		return Aggregation.newAggregation(DataValue.class,matchOperation,groupOperation,projectionOperation);
+		}
+//		return Aggregation.newAggregation(DataValue.class,matchOperation,groupOperation,projectionOperation);
+	}
+	
+	private TypedAggregation<DataValue> getSubstractedPercentData(List<Integer> dep,List<Integer> num,List<Integer> deno, String rule){
+		MatchOperation matchOperation = Aggregation.match(Criteria.where("inid").in(dep));
+		GroupOperation groupOperation=Aggregation.group("areaId","tp").sum(when(where("inid").in(deno)).thenValueOf("$dataValue").otherwise(0)).as("denominator");;
+		
+		ProjectionOperation projectionOperation=Aggregation.project().and("_id.areaId").as("areaId").and("_id.tp").as("tp")
+				.and(when(where("inid").is(num.get(0))).then("$dataValue").otherwise(0)).as("n1")
+				.and(when(where("inid").is(num.get(1))).then("$dataValue").otherwise(0)).as("n2")
+				.and("n1").minus("n2").as("numerator")
+				.and(when(where("denominator").gt(0)).thenValueOf(Divide.valueOf(Multiply.valueOf("numerator")
+				.multiplyBy(100)).divideBy("denominator")).otherwise(0)).as("dataValue");
+		
+		/*ProjectionOperation projectionOperation=Aggregation.project().and("_id.areaId").as("areaId")
+				.and("_id.tp").as("tp").and("numerator").as("numerator").and("denominator").as("denominator")
+				.andExclude("_id")
+				.and(when(where("denominator").gt(0)).thenValueOf(Divide.valueOf(Multiply.valueOf("numerator")
+				.multiplyBy(100)).divideBy("denominator")).otherwise(0)).as("dataValue");*/
 		return Aggregation.newAggregation(DataValue.class,matchOperation,groupOperation,projectionOperation);
 	}
 	
@@ -377,7 +424,7 @@ public class MongoAggregationService {
 		return Aggregation.newAggregation(matchOperation,projectionOperation,groupOperation);
 	}
 	
-	public Aggregation getGreaterThanCount(Integer formId, String area, String path, Integer value, String rule) {
+	public Aggregation getCount(Integer formId, String area, String path, Integer value, String rule) {
 		MatchOperation matchOperation=null;
 		switch (rule) {
 		case "eq":
@@ -416,9 +463,14 @@ public class MongoAggregationService {
 	}
 	
 	public Aggregation getAreaCount(String area, String path,Integer value,String[] rules) {
+		Criteria finalCriteria=new Criteria();
 		Criteria criteria = Criteria.where(path).is(value);
+		Criteria orCriteria=new Criteria();
+//		Criteria andCriteria=new Criteria();
 
-		List<Criteria> docCriterias = new ArrayList<Criteria>();
+		List<Criteria> orCriterias = new ArrayList<Criteria>();
+		List<Criteria> andCriterias=new ArrayList<Criteria>();
+		
 
 		for (String rule: rules) {
 			switch (rule.split("\\(")[0]) {
@@ -426,13 +478,30 @@ public class MongoAggregationService {
 				criteria=criteria.and(rule.split("\\(")[1].split(":")[0]).is(Integer.parseInt(rule.split("\\(")[1].split(":")[1].split("\\)")[0]));
 //				docCriterias.add(Criteria.where(rule.split("\\(")[1].split(":")[0]).is(rule.split("\\(")[1].split(":")[1].split("\\)")[0]));
 				break;
+			case "and$in" :
+//				criteria=criteria.and(rule.split("\\(")[1].split(":")[0]).in(Arrays.asList(rule.split("\\[")[1].split("\\]")[0].split(",")));
+				List<Integer> andtd=new ArrayList<>();
+				Arrays.asList(rule.split("\\[")[1].split("\\]")[0].split(",")).forEach(v->andtd.add(Integer.parseInt(v)));
+				andCriterias.add(Criteria.where(rule.split("\\(")[1].split(":")[0]).in(andtd));
+				break;
+			case "or$in" :
+//				orCriteria=orCriteria.orOperator(Criteria.where(rule.split("\\(")[1].split(":")[0]).in(Arrays.asList(rule.split("\\[")[1].split("\\]")[0].split(","))));
+				List<Integer> ortd=new ArrayList<>();
+				Arrays.asList(rule.split("\\[")[1].split("\\]")[0].split(",")).forEach(v->ortd.add(Integer.parseInt(v)));
+				orCriterias.add(Criteria.where(rule.split("\\(")[1].split(":")[0]).in(ortd));
+				break;
 
 			default:
 				break;
 			}
 		    
 		}
-//		criteria = criteria.andOperator(docCriterias.toArray(new Criteria[rules.length]));
+		if (!andCriterias.isEmpty()) {
+			criteria=criteria.andOperator(andCriterias.toArray(new Criteria[andCriterias.size()]));
+		}
+		if(orCriterias.size()!=0)
+			criteria = criteria.orOperator(orCriterias.toArray(new Criteria[orCriterias.size()]));
+//		finalCriteria=finalCriteria.andOperator(criteria,orCriteria);
 		MatchOperation matchOperation = Aggregation.match(criteria);
 		GroupOperation groupOperation=Aggregation.group(area).count().as("dataValue");
 		return Aggregation.newAggregation(matchOperation,groupOperation);
