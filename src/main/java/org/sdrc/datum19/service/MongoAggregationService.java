@@ -331,18 +331,16 @@ public class MongoAggregationService {
 		ProjectionOperation p1=null;
 		ProjectionOperation p2=null;
 		if(rule.equals("sub")) {
-			groupOperation=Aggregation.group("areaId","tp").sum(when(where("inid").in(deno)).thenValueOf("$dataValue").otherwise(0)).as("denominator");;
+			groupOperation=Aggregation.group("areaId","tp").sum(when(where("inid").in(deno)).thenValueOf("$dataValue").otherwise(0)).as("denominator")
+					.sum(Sum.sumOf(when(where("inid").is(num.get(0))).then("$dataValue").otherwise(0))).as("n1")
+					.sum(when(where("inid").is(num.get(1))).then("$dataValue").otherwise(0)).as("n2");
 			
-			projectionOperation=Aggregation.project().and("_id.areaId").as("areaId").and("_id.tp").as("tp")
-					.and(when(where("inid").is(num.get(0))).then("$dataValue").otherwise(0)).as("n1")
-					.and(when(where("inid").is(num.get(1))).then("$dataValue").otherwise(0)).as("n2")
-					.and("denominator").as("denominator");
-			p1=Aggregation.project().and("areaId").as("areaId").and("tp").as("tp").and("n1").minus("n2").as("numerator").and("denominator").as("denominator");
+			p1=Aggregation.project().and("areaId").as("areaId").and("tp").as("tp").and(Subtract.valueOf("n1").subtract("n2")).as("numerator").and("denominator").as("denominator");
 			
-			p2=Aggregation.project().and("areaId").as("areaId").and("tp").as("tp")
+			p2=Aggregation.project().and("areaId").as("areaId").and("tp").as("tp").and("numerator").as("numerator").and("denominator").as("denominator")
 					.and(when(where("denominator").gt(0)).thenValueOf(Divide.valueOf(Multiply.valueOf("numerator")
 					.multiplyBy(100)).divideBy("denominator")).otherwise(0)).as("dataValue");
-			return Aggregation.newAggregation(DataValue.class,matchOperation,groupOperation,projectionOperation,p1);
+			return Aggregation.newAggregation(DataValue.class,matchOperation,groupOperation,p1,p2);
 		}else {
 		groupOperation=Aggregation.group("areaId","tp").sum(when(where("inid").in(num)).thenValueOf("$dataValue").otherwise(0)).as("numerator")
 				.sum(when(where("inid").in(deno)).thenValueOf("$dataValue").otherwise(0)).as("denominator");
