@@ -140,7 +140,9 @@ public class MongoAggregationService {
 							String.valueOf(indicator.getIndicatorDataMap().get("area")), 
 							String.valueOf(indicator.getIndicatorDataMap().get("collection")), 
 							String.valueOf(indicator.getIndicatorDataMap().get("indicatorName")),
-							String.valueOf(indicator.getIndicatorDataMap().get("numerator"))), clazz,Map.class).getMappedResults();
+							String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
+							String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule")).split(":").length>1
+							?String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule")).split(":")[1]:""), clazz,Map.class).getMappedResults();
 //					System.out.println("uniqueCountData :: "+uniqueCountData);
 					uniqueCountData.forEach(data->{
 						DataValue datadoc=new DataValue();
@@ -351,36 +353,7 @@ public class MongoAggregationService {
 				.multiplyBy(100)).divideBy("denominator")).otherwise(0)).as("dataValue");
 		return Aggregation.newAggregation(DataValue.class,matchOperation,groupOperation,projectionOperation);
 		}
-//		return Aggregation.newAggregation(DataValue.class,matchOperation,groupOperation,projectionOperation);
 	}
-	
-	private TypedAggregation<DataValue> getSubstractedPercentData(List<Integer> dep,List<Integer> num,List<Integer> deno, String rule){
-		MatchOperation matchOperation = Aggregation.match(Criteria.where("inid").in(dep));
-		GroupOperation groupOperation=Aggregation.group("areaId","tp").sum(when(where("inid").in(deno)).thenValueOf("$dataValue").otherwise(0)).as("denominator");;
-		
-		ProjectionOperation projectionOperation=Aggregation.project().and("_id.areaId").as("areaId").and("_id.tp").as("tp")
-				.and(when(where("inid").is(num.get(0))).then("$dataValue").otherwise(0)).as("n1")
-				.and(when(where("inid").is(num.get(1))).then("$dataValue").otherwise(0)).as("n2")
-				.and("n1").minus("n2").as("numerator")
-				.and(when(where("denominator").gt(0)).thenValueOf(Divide.valueOf(Multiply.valueOf("numerator")
-				.multiplyBy(100)).divideBy("denominator")).otherwise(0)).as("dataValue");
-		
-		/*ProjectionOperation projectionOperation=Aggregation.project().and("_id.areaId").as("areaId")
-				.and("_id.tp").as("tp").and("numerator").as("numerator").and("denominator").as("denominator")
-				.andExclude("_id")
-				.and(when(where("denominator").gt(0)).thenValueOf(Divide.valueOf(Multiply.valueOf("numerator")
-				.multiplyBy(100)).divideBy("denominator")).otherwise(0)).as("dataValue");*/
-		return Aggregation.newAggregation(DataValue.class,matchOperation,groupOperation,projectionOperation);
-	}
-	
-	
-	
-//	public Aggregation getDropdownAggregationResults(Integer formId, String area, String collection, String path, List<Integer> tdlist,String name) {
-//		MatchOperation matchOperation = Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).in(tdlist));
-//		ProjectionOperation projectionOperation=Aggregation.project().and("data").as("data");
-//		GroupOperation groupOperation= Aggregation.group(area).count().as("value");
-//		return Aggregation.newAggregation(matchOperation,projectionOperation,groupOperation);
-//	}
 	
 //	for count of 0 records
 	public Aggregation getDropdownAggregationResults(Integer formId, String area, String collection, String path, List<Integer> tdlist,String name) {
@@ -410,8 +383,19 @@ public class MongoAggregationService {
 		return Aggregation.newAggregation(matchOperation,projectionOperation,groupOperation);
 	}
 	
-	public Aggregation getUniqueCount(Integer formId, String area, String collection, String name,String childArea) {
-		MatchOperation matchOperation=Aggregation.match(Criteria.where("formId").is(formId));
+	public Aggregation getUniqueCount(Integer formId, String area, String collection, String name,String childArea,String conditions) {
+		
+		List<String> condarr=new ArrayList<>();
+		if(!conditions.isEmpty())
+			condarr=Arrays.asList(conditions.split(","));
+		Criteria criteria = Criteria.where("formId").is(formId);
+		if(!condarr.isEmpty()) {
+		condarr.forEach(_cond->{
+			criteria.andOperator(Criteria.where("data."+_cond.split("=")[0]).is(Integer.parseInt(_cond.split("=")[1])));
+		});
+		}
+		
+		MatchOperation matchOperation=Aggregation.match(criteria);
 		ProjectionOperation projectionOperation=Aggregation.project().and("data").as("data");
 		GroupOperation groupOperation=Aggregation.group(area).addToSet("data."+childArea).as("childArea");
 		UnwindOperation unwindOperation=Aggregation.unwind("childArea");
@@ -494,10 +478,7 @@ public class MongoAggregationService {
 	}
 	
 	public Aggregation getAreaCount(String area, String path,Integer value,String[] rules) {
-		Criteria finalCriteria=new Criteria();
 		Criteria criteria = Criteria.where(path).is(value);
-		Criteria orCriteria=new Criteria();
-//		Criteria andCriteria=new Criteria();
 
 		List<Criteria> orCriterias = new ArrayList<Criteria>();
 		List<Criteria> andCriterias=new ArrayList<Criteria>();
@@ -507,16 +488,13 @@ public class MongoAggregationService {
 			switch (rule.split("\\(")[0]) {
 			case "eq":
 				criteria=criteria.and(rule.split("\\(")[1].split(":")[0]).is(Integer.parseInt(rule.split("\\(")[1].split(":")[1].split("\\)")[0]));
-//				docCriterias.add(Criteria.where(rule.split("\\(")[1].split(":")[0]).is(rule.split("\\(")[1].split(":")[1].split("\\)")[0]));
 				break;
 			case "and$in" :
-//				criteria=criteria.and(rule.split("\\(")[1].split(":")[0]).in(Arrays.asList(rule.split("\\[")[1].split("\\]")[0].split(",")));
 				List<Integer> andtd=new ArrayList<>();
 				Arrays.asList(rule.split("\\[")[1].split("\\]")[0].split(",")).forEach(v->andtd.add(Integer.parseInt(v)));
 				andCriterias.add(Criteria.where(rule.split("\\(")[1].split(":")[0]).in(andtd));
 				break;
 			case "or$in" :
-//				orCriteria=orCriteria.orOperator(Criteria.where(rule.split("\\(")[1].split(":")[0]).in(Arrays.asList(rule.split("\\[")[1].split("\\]")[0].split(","))));
 				List<Integer> ortd=new ArrayList<>();
 				Arrays.asList(rule.split("\\[")[1].split("\\]")[0].split(",")).forEach(v->ortd.add(Integer.parseInt(v)));
 				orCriterias.add(Criteria.where(rule.split("\\(")[1].split(":")[0]).in(ortd));
@@ -532,7 +510,6 @@ public class MongoAggregationService {
 		}
 		if(orCriterias.size()!=0)
 			criteria = criteria.orOperator(orCriterias.toArray(new Criteria[orCriterias.size()]));
-//		finalCriteria=finalCriteria.andOperator(criteria,orCriteria);
 		MatchOperation matchOperation = Aggregation.match(criteria);
 		GroupOperation groupOperation=Aggregation.group(area).count().as("dataValue");
 		return Aggregation.newAggregation(matchOperation,groupOperation);
