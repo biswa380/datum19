@@ -94,13 +94,31 @@ public class MongoAggregationService {
 				break;
 				
 			case "table":
-				List<Map> tableDataList= mongoTemplate.aggregate(getTableAggregationResults(
-						Integer.valueOf((String) indicator.getIndicatorDataMap().get("formId")),
-						 String.valueOf(indicator.getIndicatorDataMap().get("area")),
-						String.valueOf(indicator.getIndicatorDataMap().get("collection")),
-						String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
-						 String.valueOf(indicator.getIndicatorDataMap().get("parentColumn")),
-						 String.valueOf(indicator.getIndicatorDataMap().get("indicatorName"))),clazz, Map.class).getMappedResults();
+				List<Map> tableDataList=new ArrayList<>();
+				switch (String.valueOf(indicator.getIndicatorDataMap().get("aggregationType"))) {
+				case "number":
+					tableDataList= mongoTemplate.aggregate(getTableAggregationResults(
+							Integer.valueOf((String) indicator.getIndicatorDataMap().get("formId")),
+							 String.valueOf(indicator.getIndicatorDataMap().get("area")),
+							String.valueOf(indicator.getIndicatorDataMap().get("collection")),
+							String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
+							 String.valueOf(indicator.getIndicatorDataMap().get("parentColumn")),
+							 String.valueOf(indicator.getIndicatorDataMap().get("indicatorName"))),clazz, Map.class).getMappedResults();
+					break;
+				case "count":
+					tableDataList= mongoTemplate.aggregate(getTableCountResults(
+							Integer.valueOf((String) indicator.getIndicatorDataMap().get("formId")),
+							 String.valueOf(indicator.getIndicatorDataMap().get("area")),
+							String.valueOf(indicator.getIndicatorDataMap().get("collection")),
+							String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
+							 String.valueOf(indicator.getIndicatorDataMap().get("parentColumn")),
+							 String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule")),
+							 String.valueOf(indicator.getIndicatorDataMap().get("indicatorName"))),clazz, Map.class).getMappedResults();
+
+				default:
+					break;
+				}
+				
 				tableDataList.forEach(data->{
 					DataValue datadoc=new DataValue();
 					datadoc.setInid(Integer.valueOf(String.valueOf(indicator.getIndicatorDataMap().get("indicatorNid"))));
@@ -277,6 +295,7 @@ public class MongoAggregationService {
 		}
 		return "aggregation complete";
 	}
+	
 	List<DataValue> percentDataMap=new ArrayList<>();
 	List<DataValue> percentDataMapAll=new ArrayList<>();
 	public List<DataValue> aggregateFinalIndicators(String periodicity, String indicatorType) {
@@ -374,6 +393,30 @@ public class MongoAggregationService {
 		UnwindOperation unwindOperation = Aggregation.unwind("data."+table);
 		GroupOperation groupOperation= Aggregation.group(area).sum("data."+table+"."+path).as("value");
 		return Aggregation.newAggregation(matchOperation,projectionOperation,unwindOperation,groupOperation);
+	}
+	
+	private Aggregation getTableCountResults(Integer formId, String area, String collection, String path, String table,String _rule,String name) {
+		// TODO Auto-generated method stub
+		String[] rules= _rule.split(";");
+		GroupOperation _groupOp=null;
+
+		for (String rule: rules) {
+			switch (rule.split("\\(")[0]) {
+			case "and$gte":
+				_groupOp=Aggregation.group(area).sum(when(where(rule.split("\\(")[1].split(":")[0])
+						.gte(Integer.parseInt(rule.split("\\(")[1].split(":")[1].split("\\)")[0]))).then(1).otherwise(0)).as("value");
+				break;
+
+			default:
+				break;
+			}
+		    
+		}
+		MatchOperation matchOperation = Aggregation.match(Criteria.where("formId").is(formId));
+		ProjectionOperation _projectOp=Aggregation.project("data");
+		UnwindOperation _unwindOp=Aggregation.unwind("data."+table);
+		
+		return Aggregation.newAggregation(Map.class, matchOperation,_projectOp, _unwindOp,_groupOp);
 	}
 	
 	public Aggregation getNumericAggregationResults(Integer formId, String area, String collection, String path,String name) {

@@ -38,7 +38,7 @@ public class MongoAggregationController {
 		return mongoAggregationService.aggregateFinalIndicators(periodicity, type);
 	}
 	
-	@PostMapping("/importIndicators")
+	@GetMapping("/importIndicators")
 	public void importIndicators() throws InvalidFormatException, IOException{
 		indicatorConfigService.importIndicators();
 	}
