@@ -321,12 +321,9 @@ public class MongoAggregationService {
 				percentDataMap.forEach(dv->{
 					dv.setInid(inid);
 					dv.set_case("percent");
-//					percentDataMapAll.add(dv);
 				});
 				percentDataMapAll.addAll(percentDataMap);
-//				System.out.println(percentDataMap);
 			} catch (Exception e) {
-				// TODO: handle exception
 				e.printStackTrace();
 			}
 		});
@@ -346,7 +343,7 @@ public class MongoAggregationService {
 	}
 	
 	private TypedAggregation<DataValue> getPercentData(List<Integer> dep,List<Integer> num,List<Integer> deno, String rule){
-		MatchOperation matchOperation = Aggregation.match(Criteria.where("inid").in(dep));
+		MatchOperation matchOperation = Aggregation.match(Criteria.where("inid").in(dep).and("tp").is(timePeriodId));
 		GroupOperation groupOperation=null;
 		ProjectionOperation projectionOperation=null;
 		ProjectionOperation p1=null;
@@ -376,7 +373,7 @@ public class MongoAggregationService {
 	
 //	for count of 0 records
 	public Aggregation getDropdownAggregationResults(Integer formId, String area, String collection, String path, List<Integer> tdlist,String name) {
-		MatchOperation matchOperation = Aggregation.match(Criteria.where("formId").is(formId));
+		MatchOperation matchOperation = Aggregation.match(Criteria.where("formId").is(formId).and("timePeriod.timePeriodId").is(timePeriodId));
 		ProjectionOperation projectionOperation=Aggregation.project().and("data").as("data");
 		ProjectionOperation projectionOperation1=Aggregation.project()
 				.and(area).as("area")
@@ -388,7 +385,7 @@ public class MongoAggregationService {
 	}
 	
 	public Aggregation getTableAggregationResults(Integer formId, String area, String collection, String path, String table,String name) {
-		MatchOperation matchOperation = Aggregation.match(Criteria.where("formId").is(formId));
+		MatchOperation matchOperation = Aggregation.match(Criteria.where("formId").is(formId).and("timePeriod.timePeriodId").is(timePeriodId));
 		ProjectionOperation projectionOperation=Aggregation.project().and("data").as("data");
 		UnwindOperation unwindOperation = Aggregation.unwind("data."+table);
 		GroupOperation groupOperation= Aggregation.group(area).sum("data."+table+"."+path).as("value");
@@ -402,9 +399,25 @@ public class MongoAggregationService {
 
 		for (String rule: rules) {
 			switch (rule.split("\\(")[0]) {
+			case "and$eq":
+				_groupOp=Aggregation.group(area).sum(when(where(rule.split("\\(")[1].split(":")[0])
+						.is(Integer.parseInt(rule.split("\\(")[1].split(":")[1].split("\\)")[0]))).then(1).otherwise(0)).as("value");
+				break;
+			case "and$gt":
+				_groupOp=Aggregation.group(area).sum(when(where(rule.split("\\(")[1].split(":")[0])
+						.gt(Integer.parseInt(rule.split("\\(")[1].split(":")[1].split("\\)")[0]))).then(1).otherwise(0)).as("value");
+				break;
+			case "and$lt":
+				_groupOp=Aggregation.group(area).sum(when(where(rule.split("\\(")[1].split(":")[0])
+						.lt(Integer.parseInt(rule.split("\\(")[1].split(":")[1].split("\\)")[0]))).then(1).otherwise(0)).as("value");
+				break;
 			case "and$gte":
 				_groupOp=Aggregation.group(area).sum(when(where(rule.split("\\(")[1].split(":")[0])
 						.gte(Integer.parseInt(rule.split("\\(")[1].split(":")[1].split("\\)")[0]))).then(1).otherwise(0)).as("value");
+				break;
+			case "and$lte":
+				_groupOp=Aggregation.group(area).sum(when(where(rule.split("\\(")[1].split(":")[0])
+						.lte(Integer.parseInt(rule.split("\\(")[1].split(":")[1].split("\\)")[0]))).then(1).otherwise(0)).as("value");
 				break;
 
 			default:
@@ -412,7 +425,7 @@ public class MongoAggregationService {
 			}
 		    
 		}
-		MatchOperation matchOperation = Aggregation.match(Criteria.where("formId").is(formId));
+		MatchOperation matchOperation = Aggregation.match(Criteria.where("formId").is(formId).and("timePeriod.timePeriodId").is(timePeriodId));
 		ProjectionOperation _projectOp=Aggregation.project("data");
 		UnwindOperation _unwindOp=Aggregation.unwind("data."+table);
 		
@@ -420,7 +433,7 @@ public class MongoAggregationService {
 	}
 	
 	public Aggregation getNumericAggregationResults(Integer formId, String area, String collection, String path,String name) {
-		MatchOperation matchOperation = Aggregation.match(Criteria.where("formId").is(formId));
+		MatchOperation matchOperation = Aggregation.match(Criteria.where("formId").is(formId).and("timePeriod.timePeriodId").is(timePeriodId));
 		ProjectionOperation projectionOperation=Aggregation.project().and("data").as("data");
 		GroupOperation groupOperation= Aggregation.group(area).sum("data."+path).as("value");
 		return Aggregation.newAggregation(matchOperation,projectionOperation,groupOperation);
@@ -431,7 +444,7 @@ public class MongoAggregationService {
 		List<String> condarr=new ArrayList<>();
 		if(!conditions.isEmpty())
 			condarr=Arrays.asList(conditions.split(","));
-		Criteria criteria = Criteria.where("formId").is(formId);
+		Criteria criteria = Criteria.where("formId").is(formId).and("timePeriod.timePeriodId").is(timePeriodId);
 		if(!condarr.isEmpty()) {
 		condarr.forEach(_cond->{
 			criteria.andOperator(Criteria.where("data."+_cond.split("=")[0]).is(Integer.parseInt(_cond.split("=")[1])));
@@ -447,7 +460,7 @@ public class MongoAggregationService {
 	}
 	
 	public Aggregation getTotalVisitCount(Integer formId, String area) {
-		MatchOperation matchOperation=Aggregation.match(Criteria.where("formId").is(formId));
+		MatchOperation matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("timePeriod.timePeriodId").is(timePeriodId));
 		ProjectionOperation projectionOperation=Aggregation.project().and("data").as("data");
 		GroupOperation groupOperation=Aggregation.group(area).count().as("dataValue");
 		return Aggregation.newAggregation(matchOperation,projectionOperation,groupOperation);
@@ -457,19 +470,19 @@ public class MongoAggregationService {
 		MatchOperation matchOperation=null;
 		switch (rule) {
 		case "eq":
-			matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).is(value));
+			matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).is(value).and("timePeriod.timePeriodId").is(timePeriodId));
 			break;
 		case "lte":
-			matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).lte(value));
+			matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).lte(value).and("timePeriod.timePeriodId").is(timePeriodId));
 			break;
 		case "gte":
-			matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).gte(value));
+			matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).gte(value).and("timePeriod.timePeriodId").is(timePeriodId));
 			break;
 		case "gt":
-			matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).gt(value));
+			matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).gt(value).and("timePeriod.timePeriodId").is(timePeriodId));
 			break;
 		case "lt":
-			matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).lt(value));
+			matchOperation=Aggregation.match(Criteria.where("formId").is(formId).and("data."+path).lt(value).and("timePeriod.timePeriodId").is(timePeriodId));
 			break;
 
 		default:
@@ -492,7 +505,7 @@ public class MongoAggregationService {
 
 		ProjectionOperation projectionOperation3 = null;
 		if (path.equals("")) {
-			matchOperation = Aggregation.match(Criteria.where("formId").is(formId));
+			matchOperation = Aggregation.match(Criteria.where("formId").is(formId).and("timePeriod.timePeriodId").is(timePeriodId));
 			projectionOperation = Aggregation.project().and("data").as("data");
 			groupOperation = Aggregation.group(query.split(":")[1], area).count().as("totalcount");
 			projectionOperation2 = Aggregation.project(area.split("\\.")[1])
@@ -503,7 +516,7 @@ public class MongoAggregationService {
 					.and(when(where("repeatCount").is(1)).then(Sum.sumOf("repeatCount")).otherwise(0)).as("dataValue");
 
 		} else {
-			matchOperation = Aggregation.match(Criteria.where("formId").is(formId).and("data." + path).in(valueList));
+			matchOperation = Aggregation.match(Criteria.where("formId").is(formId).and("data." + path).in(valueList).and("timePeriod.timePeriodId").is(timePeriodId));
 			projectionOperation = Aggregation.project().and("data").as("data");
 			groupOperation = Aggregation.group(query.split(":")[1], "data." + path, area).count().as("totalcount");
 			projectionOperation2 = Aggregation.project(path, area.split("\\.")[1])
