@@ -81,7 +81,8 @@ public class MongoAggregationService {
 						String.valueOf(indicator.getIndicatorDataMap().get("collection")),
 						String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
 						tdlist,
-						String.valueOf(indicator.getIndicatorDataMap().get("indicatorName"))),clazz, Map.class).getMappedResults();
+						String.valueOf(indicator.getIndicatorDataMap().get("indicatorName")),
+						String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule"))),clazz, Map.class).getMappedResults();
 				dataList.forEach(data->{
 					DataValue datadoc=new DataValue();
 					datadoc.setInid(Integer.valueOf(String.valueOf(indicator.getIndicatorDataMap().get("indicatorNid"))));
@@ -416,8 +417,17 @@ public class MongoAggregationService {
 	}
 	
 //	for count of 0 records
-	public Aggregation getDropdownAggregationResults(Integer formId, String area, String collection, String path, List<Integer> tdlist,String name) {
-		MatchOperation matchOperation = Aggregation.match(Criteria.where("formId").is(formId).and("timePeriod.timePeriodId").is(timePeriodId));
+	public Aggregation getDropdownAggregationResults(Integer formId, String area, String collection, String path, List<Integer> tdlist,String name,String conditions) {
+		List<String> condarr=new ArrayList<>();
+		if(!conditions.isEmpty())
+			condarr=Arrays.asList(conditions.split(";"));
+		Criteria matchCriteria=Criteria.where("formId").is(formId).and("timePeriod.timePeriodId").is(timePeriodId);
+		if(!condarr.isEmpty()) {
+		condarr.forEach(_cond->{
+			matchCriteria.andOperator(Criteria.where(_cond.split(":")[0].split("\\(")[1]).is(Integer.parseInt(_cond.split(":")[1].split("\\)")[0])));
+		});
+		}
+		MatchOperation matchOperation = Aggregation.match(matchCriteria);
 		ProjectionOperation projectionOperation=Aggregation.project().and("data").as("data");
 		ProjectionOperation projectionOperation1=Aggregation.project()
 				.and(area).as("area")
