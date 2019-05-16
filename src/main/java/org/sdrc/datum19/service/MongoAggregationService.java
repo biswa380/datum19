@@ -137,7 +137,8 @@ public class MongoAggregationService {
 						 String.valueOf(indicator.getIndicatorDataMap().get("area")),
 						String.valueOf(indicator.getIndicatorDataMap().get("collection")),
 						String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
-						String.valueOf(indicator.getIndicatorDataMap().get("indicatorName"))),clazz, Map.class).getMappedResults();
+						String.valueOf(indicator.getIndicatorDataMap().get("indicatorName")),
+						String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule"))),clazz, Map.class).getMappedResults();
 				
 				numericDataList.forEach(data->{
 					DataValue datadoc=new DataValue();
@@ -296,9 +297,11 @@ public class MongoAggregationService {
 		return "aggregation complete";
 	}
 	
-	List<DataValue> percentDataMap=new ArrayList<>();
-	List<DataValue> percentDataMapAll=new ArrayList<>();
+	List<DataValue> percentDataMap=null;
+	List<DataValue> percentDataMapAll=null;
 	public List<DataValue> aggregateFinalIndicators(String periodicity, String indicatorType) {
+		percentDataMap=new ArrayList<>();
+		percentDataMapAll=new ArrayList<>();
 		List<Indicator> indicatorList = indicatorRepository.getPercentageIndicators(periodicity,indicatorType);
 		indicatorList.forEach(indicator->{
 			List<Integer> dependencies=new ArrayList<>();
@@ -317,15 +320,35 @@ public class MongoAggregationService {
 				dependencies.add(Integer.parseInt(denominators[i]));
 			}
 			try {
-				percentDataMap=mongoTemplate.aggregate(getPercentData(dependencies,numlist,denolist,aggrule),DataValue.class,DataValue.class).getMappedResults();
-				percentDataMap.forEach(dv->{
-					dv.setInid(inid);
-					dv.set_case("percent");
-					if (dv.getDenominator()==0) {
-						dv.setDataValue(null);
-					}
-				});
-				percentDataMapAll.addAll(percentDataMap);
+				switch (String.valueOf(indicator.getIndicatorDataMap().get("aggregationType"))) {
+				case "percent":
+					percentDataMap=mongoTemplate.aggregate(getPercentData(dependencies,numlist,denolist,aggrule),DataValue.class,DataValue.class).getMappedResults();
+					percentDataMap.forEach(dv->{
+						dv.setInid(inid);
+						dv.set_case("percent");
+						if (dv.getDenominator()==0) {
+							dv.setDataValue(null);
+						}
+					});
+					percentDataMapAll.addAll(percentDataMap);
+					break;
+					
+				case "avg":
+					percentDataMap=mongoTemplate.aggregate(getAvgData(dependencies,numlist,denolist,aggrule),DataValue.class,DataValue.class).getMappedResults();
+					percentDataMap.forEach(dv->{
+						dv.setInid(inid);
+						dv.set_case("avg");
+						if (dv.getDenominator()==0) {
+							dv.setDataValue(null);
+						}
+					});
+					percentDataMapAll.addAll(percentDataMap);
+					break;
+
+				default:
+					break;
+				}
+					
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
@@ -335,6 +358,24 @@ public class MongoAggregationService {
 	}
 	
 	
+	private TypedAggregation getAvgData(List<Integer> dependencies, List<Integer> numlist, List<Integer> denolist,
+			String aggrule) {
+		// TODO Auto-generated method stub
+		MatchOperation matchOperation = Aggregation.match(Criteria.where("inid").in(dependencies).and("tp").is(timePeriodId));
+		GroupOperation groupOperation=null;
+		ProjectionOperation projectionOperation=null;
+		ProjectionOperation p1=null;
+		ProjectionOperation p2=null;
+		groupOperation=Aggregation.group("areaId","tp").sum(when(where("inid").in(numlist)).thenValueOf("$dataValue").otherwise(0)).as("numerator")
+				.sum(when(where("inid").in(denolist)).thenValueOf("$dataValue").otherwise(0)).as("denominator");
+		projectionOperation=Aggregation.project().and("_id.areaId").as("areaId")
+				.and("_id.tp").as("tp").and("numerator").as("numerator").and("denominator").as("denominator")
+				.andExclude("_id")
+				.and(when(where("denominator").gt(0)).thenValueOf(Divide.valueOf("numerator").divideBy("denominator")).otherwise(0)).as("dataValue");
+		return Aggregation.newAggregation(DataValue.class,matchOperation,groupOperation,projectionOperation);
+	}
+
+
 	private TypedAggregation<DataValue> aggregateAreaTree(Integer tp, List<Integer> areaList) {
 		
 		MatchOperation matchOperation=Aggregation.match(Criteria.where("tp").is(tp).and("areaId").in(areaList));
@@ -435,8 +476,17 @@ public class MongoAggregationService {
 		return Aggregation.newAggregation(Map.class, matchOperation,_projectOp, _unwindOp,_groupOp);
 	}
 	
-	public Aggregation getNumericAggregationResults(Integer formId, String area, String collection, String path,String name) {
-		MatchOperation matchOperation = Aggregation.match(Criteria.where("formId").is(formId).and("timePeriod.timePeriodId").is(timePeriodId));
+	public Aggregation getNumericAggregationResults(Integer formId, String area, String collection, String path,String name,String conditions) {
+		List<String> condarr=new ArrayList<>();
+		if(!conditions.isEmpty())
+			condarr=Arrays.asList(conditions.split(";"));
+		Criteria matchCriteria=Criteria.where("formId").is(formId).and("timePeriod.timePeriodId").is(timePeriodId);
+		if(!condarr.isEmpty()) {
+		condarr.forEach(_cond->{
+			matchCriteria.andOperator(Criteria.where(_cond.split(":")[0].split("\\(")[1]).is(Integer.parseInt(_cond.split(":")[1].split("\\)")[0])));
+		});
+		}
+		MatchOperation matchOperation = Aggregation.match(matchCriteria);
 		ProjectionOperation projectionOperation=Aggregation.project().and("data").as("data");
 		GroupOperation groupOperation= Aggregation.group(area).sum("data."+path).as("value");
 		return Aggregation.newAggregation(matchOperation,projectionOperation,groupOperation);
