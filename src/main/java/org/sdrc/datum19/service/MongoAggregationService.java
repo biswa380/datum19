@@ -321,6 +321,9 @@ public class MongoAggregationService {
 				percentDataMap.forEach(dv->{
 					dv.setInid(inid);
 					dv.set_case("percent");
+					if (dv.getDenominator()==0) {
+						dv.setDataValue(null);
+					}
 				});
 				percentDataMapAll.addAll(percentDataMap);
 			} catch (Exception e) {

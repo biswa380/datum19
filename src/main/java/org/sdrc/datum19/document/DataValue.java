@@ -17,6 +17,6 @@ public class DataValue implements Serializable {
 	private Integer tp;
 	private String _case;
 	private Integer inid;
-	private String numerator;
-	private String denominator;
+	private Double numerator;
+	private Double denominator;
 }

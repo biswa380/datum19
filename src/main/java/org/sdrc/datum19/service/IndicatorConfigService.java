@@ -51,6 +51,7 @@ public class IndicatorConfigService {
 			i.setIndicatorDataMap(indicatorMap);
 			indicatorRepository.save(i);
 		}
+		indicatorWorkbook.close();
 	}
 	@SuppressWarnings("deprecation")
 	public static String getCellValueAsString(Cell cell) {
