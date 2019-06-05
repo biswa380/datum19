@@ -21,6 +21,7 @@ import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.AccumulatorOperators.Sum;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
+import org.springframework.data.mongodb.core.aggregation.ArithmeticOperators;
 import org.springframework.data.mongodb.core.aggregation.ArithmeticOperators.*;
 import org.springframework.data.mongodb.core.aggregation.ArithmeticOperators.Multiply;
 import org.springframework.data.mongodb.core.aggregation.Fields;
@@ -488,7 +489,7 @@ public class MongoAggregationService {
 	
 	public Aggregation getNumericAggregationResults(Integer formId, String area, String collection, String path,String name,String conditions) {
 		List<String> condarr=new ArrayList<>();
-		if(!conditions.isEmpty())
+		if(!conditions.equals("null")&&!conditions.isEmpty())
 			condarr=Arrays.asList(conditions.split(";"));
 		Criteria matchCriteria=Criteria.where("formId").is(formId).and("timePeriod.timePeriodId").is(timePeriodId);
 		if(!condarr.isEmpty()) {
@@ -496,10 +497,32 @@ public class MongoAggregationService {
 			matchCriteria.andOperator(Criteria.where(_cond.split(":")[0].split("\\(")[1]).is(Integer.parseInt(_cond.split(":")[1].split("\\)")[0])));
 		});
 		}
+		String pathString="";
+		path="data."+path;
+		path=path.replace("+", "+data.");
+		path=path.replace("-", "-data.");
+		pathString=path;
+//		String[] paths=path.split(",");
+//		String pathString="";
+//		for (int i = 0; i < paths.length; i++) {
+//			pathString=pathString+"data."+paths[i]+"+";
+//		}
+//		pathString=pathString.substring(0,pathString.lastIndexOf("+"));
 		MatchOperation matchOperation = Aggregation.match(matchCriteria);
-		ProjectionOperation projectionOperation=Aggregation.project().and("data").as("data");
-		GroupOperation groupOperation= Aggregation.group(area).sum("data."+path).as("value");
-		return Aggregation.newAggregation(matchOperation,projectionOperation,groupOperation);
+		ProjectionOperation projectionOperation=null;
+		ProjectionOperation pop=null;
+		GroupOperation groupOperation=null;
+		if(pathString.contains("+")||pathString.contains("-")) {
+			projectionOperation=Aggregation.project().and("data").as("data");
+			pop=Aggregation.project().and(area).as("area").andExpression(pathString).as("value1");
+			groupOperation= Aggregation.group("area").sum("value1").as("value");
+			return Aggregation.newAggregation(matchOperation,projectionOperation,pop,groupOperation);
+		}else {
+			projectionOperation=Aggregation.project().and("data").as("data");
+			groupOperation= Aggregation.group(area).sum(pathString).as("value");
+			return Aggregation.newAggregation(matchOperation,projectionOperation,groupOperation);
+		}
+		
 	}
 	
 	public Aggregation getUniqueCount(Integer formId, String area, String collection, String name,String childArea,String conditions) {
