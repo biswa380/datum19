@@ -76,6 +76,7 @@ public class MongoAggregationService {
 			case "dropdown":
 				List<Integer> tdlist=new ArrayList<>();
 				Arrays.asList(String.valueOf(indicator.getIndicatorDataMap().get("typeDetailId")).split("#")).stream().forEach(i->{tdlist.add(Integer.parseInt(i));});
+				System.out.println(indicator.getIndicatorDataMap().get("indicatorNid"));
 				List<Map> dataList= mongoTemplate.aggregate(getDropdownAggregationResults(
 						Integer.valueOf((String) indicator.getIndicatorDataMap().get("formId")),
 						 String.valueOf(indicator.getIndicatorDataMap().get("area")),
@@ -488,6 +489,9 @@ public class MongoAggregationService {
 	}
 	
 	public Aggregation getNumericAggregationResults(Integer formId, String area, String collection, String path,String name,String conditions) {
+		
+//		area -> data.f1q_district,data.f1FacilityType,data.f1FacilityLevel
+
 		List<String> condarr=new ArrayList<>();
 		if(!conditions.equals("null")&&!conditions.isEmpty())
 			condarr=Arrays.asList(conditions.split(";"));
@@ -514,12 +518,22 @@ public class MongoAggregationService {
 		GroupOperation groupOperation=null;
 		if(pathString.contains("+")||pathString.contains("-")) {
 			projectionOperation=Aggregation.project().and("data").as("data");
-			pop=Aggregation.project().and(area).as("area").andExpression(pathString).as("value1");
-			groupOperation= Aggregation.group("area").sum("value1").as("value");
+//			pop=Aggregation.project().and(area).as("area").andExpression(pathString).as("value1");
+			
+			pop=Aggregation.project().andInclude(area.split(",")).andExpression(pathString).as("value1");
+			
+//			groupOperation= Aggregation.group("area").sum("value1").as("value");
+			
+			area = area.replaceAll("data.", "");
+			groupOperation= Aggregation.group(area.split(",")).sum("value1").as("value");
+			
 			return Aggregation.newAggregation(matchOperation,projectionOperation,pop,groupOperation);
 		}else {
 			projectionOperation=Aggregation.project().and("data").as("data");
-			groupOperation= Aggregation.group(area).sum(pathString).as("value");
+			
+			groupOperation= Aggregation.group(area.split(",")).sum(pathString).as("value");
+			
+//			groupOperation= Aggregation.group(area).sum(pathString).as("value");
 			return Aggregation.newAggregation(matchOperation,projectionOperation,groupOperation);
 		}
 		
