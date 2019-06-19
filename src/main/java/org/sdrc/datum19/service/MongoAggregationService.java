@@ -502,12 +502,6 @@ public class MongoAggregationService {
 		path=path.replace("+", "+data.");
 		path=path.replace("-", "-data.");
 		pathString=path;
-//		String[] paths=path.split(",");
-//		String pathString="";
-//		for (int i = 0; i < paths.length; i++) {
-//			pathString=pathString+"data."+paths[i]+"+";
-//		}
-//		pathString=pathString.substring(0,pathString.lastIndexOf("+"));
 		MatchOperation matchOperation = Aggregation.match(matchCriteria);
 		ProjectionOperation projectionOperation=null;
 		ProjectionOperation pop=null;
