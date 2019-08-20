@@ -30,4 +30,6 @@ public interface TimePeriodRepository extends MongoRepository<TimePeriod, String
 
 	public List<TimePeriod> findAllByPeriodicityOrderByCreatedDateDesc(String periodicity);
 
+	@Query("{'startDate':{$lte:?0},'endDate':{$gte:?0},periodicity:?1}")
+	TimePeriod getCurrentTimePeriod(Date createdDate, String periodicity);
 }

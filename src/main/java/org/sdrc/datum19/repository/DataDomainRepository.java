@@ -13,4 +13,5 @@ public interface DataDomainRepository extends MongoRepository<DataValue, String>
 
 	List<DataValue> findTop4ByAreaIdAndInidOrderByTpDesc(Integer areaId, Integer indicatorId);
 
+    void deleteByTp(Integer tp);
 }
