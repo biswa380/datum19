@@ -13,6 +13,8 @@ public class DataValue implements Serializable {
 	private static final long serialVersionUID = -1636923412521819247L;
 	private String id;
 	private Integer areaId;
+	private Integer f1FacilityType;
+	private Integer f1FacilityLevel;
 	private Double dataValue;
 	private Integer tp;
 	private String _case;
