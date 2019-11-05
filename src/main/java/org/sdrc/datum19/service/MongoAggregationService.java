@@ -3,28 +3,31 @@ package org.sdrc.datum19.service;
 import static org.springframework.data.mongodb.core.aggregation.ConditionalOperators.when;
 import static org.springframework.data.mongodb.core.query.Criteria.where;
 
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
-import org.bson.Document;
+import org.sdrc.datum19.document.AggregateLegacyDataStatus;
 import org.sdrc.datum19.document.AllChecklistFormData;
 import org.sdrc.datum19.document.DataValue;
 import org.sdrc.datum19.document.Indicator;
+import org.sdrc.datum19.document.TimePeriod;
+import org.sdrc.datum19.repository.AggregateLegacyDataStatusRepository;
 import org.sdrc.datum19.repository.DataDomainRepository;
 import org.sdrc.datum19.repository.IndicatorRepository;
+import org.sdrc.datum19.repository.TimePeriodRepository;
 import org.sdrc.datum19.util.AreaMapObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.AccumulatorOperators.Sum;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
-import org.springframework.data.mongodb.core.aggregation.ArithmeticOperators;
-import org.springframework.data.mongodb.core.aggregation.ArithmeticOperators.*;
+import org.springframework.data.mongodb.core.aggregation.ArithmeticOperators.Divide;
 import org.springframework.data.mongodb.core.aggregation.ArithmeticOperators.Multiply;
-import org.springframework.data.mongodb.core.aggregation.Fields;
+import org.springframework.data.mongodb.core.aggregation.ArithmeticOperators.Subtract;
 import org.springframework.data.mongodb.core.aggregation.GroupOperation;
 import org.springframework.data.mongodb.core.aggregation.LookupOperation;
 import org.springframework.data.mongodb.core.aggregation.MatchOperation;
@@ -34,8 +37,9 @@ import org.springframework.data.mongodb.core.aggregation.UnwindOperation;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+
+import lombok.extern.slf4j.Slf4j;
 
 /*
  * author : Biswabhusan Pradhan
@@ -44,6 +48,7 @@ import org.springframework.stereotype.Service;
  */
 
 @Service
+@Slf4j
 public class MongoAggregationService {
 	@Autowired
 	private MongoTemplate mongoTemplate;
@@ -60,11 +65,55 @@ public class MongoAggregationService {
 	@Autowired
 	private DataDomainRepository dataDomainRepository;
 	
+	@Autowired
+	private TimePeriodRepository timePeriodRepository;
+	
+	@Autowired
+	private AggregateLegacyDataStatusRepository aggregateLegacyDataStatusRepository;
+	
 	Integer timePeriodId=null;
 	List<DataValue> dataValueList;
 	
+	public List<TimePeriod> getCurrentTimePeriodForAggregation() throws ParseException {
+		return timePeriodRepository.findTop2ByPeriodicityOrderByStartDateDesc("1");
+	}
+	
+	public String callAggregate(Integer tp, String periodicity) {
+		
+		if(aggregateLegacyDataStatusRepository.findByStatus("INPROGRESS").size() > 0) {
+			throw new RuntimeException("Another aggregation is in progress. Try again in sometime..");
+		}
+		
+		AggregateLegacyDataStatus aggregateLegacyDataStatus = new AggregateLegacyDataStatus();
+		aggregateLegacyDataStatus.setStartTime(new Date());
+		aggregateLegacyDataStatus.setTpId(tp);
+		aggregateLegacyDataStatus.setStatus("INPROGRESS");
+		aggregateLegacyDataStatus.setPeriodicity(periodicity);
+		aggregateLegacyDataStatusRepository.save(aggregateLegacyDataStatus);
+		
+		try {
+			aggregate(tp, periodicity);
+			aggregateLegacyDataStatus.setEndTime(new Date());
+			aggregateLegacyDataStatus.setStatus("COMPLETED");
+			aggregateLegacyDataStatusRepository.save(aggregateLegacyDataStatus);
+			
+		} catch (Exception e) {
+			aggregateLegacyDataStatus.setStatus("FAILED");
+			aggregateLegacyDataStatusRepository.save(aggregateLegacyDataStatus);
+			log.error("exception occured in call aggregate : {}", e);
+		}
+		
+		return "aggregation complete";
+		
+	}
+	
 	//consider those for aggregation where valid = true and latest = true
 	public String aggregate(Integer tp, String periodicity){
+		
+		if(aggregateLegacyDataStatusRepository.findByStatus("INPROGRESS").size() > 1) {
+			throw new RuntimeException("Another aggregation is in progress. Try again in sometime..");
+		}
+		
 		dataValueList=new ArrayList<>();
 		timePeriodId=tp;
 		dataValueList=new ArrayList<>();
@@ -80,7 +129,7 @@ public class MongoAggregationService {
 			try {
 				clazz=Class.forName(String.valueOf(indicator.getIndicatorDataMap().get("collection")));
 			} catch (ClassNotFoundException e) {
-				e.printStackTrace();
+				log.error("exception occured in aggregate : {}", e);
 			}
 			for (String aggArea : aggAreaArray) {
 				
@@ -146,7 +195,8 @@ public class MongoAggregationService {
 								String.valueOf(indicator.getIndicatorDataMap().get("collection")),
 								String.valueOf(indicator.getIndicatorDataMap().get("numerator")),
 								 String.valueOf(indicator.getIndicatorDataMap().get("parentColumn")),
-								 String.valueOf(indicator.getIndicatorDataMap().get("indicatorName"))),clazz, Map.class).getMappedResults();
+								 String.valueOf(indicator.getIndicatorDataMap().get("indicatorName")),
+								 String.valueOf(indicator.getIndicatorDataMap().get("aggregationRule"))),clazz, Map.class).getMappedResults();
 						break;
 					case "count":
 						tableDataList= mongoTemplate.aggregate(getTableCountResults(
@@ -519,11 +569,10 @@ public class MongoAggregationService {
 			Update update = new Update();
 			update.set("isAggregated",true);
 			mongoTemplate.updateMulti(query, update, AllChecklistFormData.class);
-			
+		
 			//end----------------------
 		} catch (Exception e) {
-			System.out.println("error encountered :: ");
-			e.printStackTrace();
+			log.error("exception occured in call aggregate : {}", e);
 		}
 		return "aggregation complete";
 	}
@@ -598,7 +647,7 @@ public class MongoAggregationService {
 				}
 					
 			} catch (Exception e) {
-				e.printStackTrace();
+				log.error("exception occured in call aggregate : {}", e);
 			}
 		});
 		dataDomainRepository.saveAll(percentDataMapAll);
@@ -624,8 +673,7 @@ public class MongoAggregationService {
 			}
 		}
 		
-		Criteria tpInidcriteria = Criteria.where("inid").in(dependencies).and("tp").is(timePeriodId).and("isValid")
-				.is(true).and("latest").is(true).and("duplicate").is(false);
+		Criteria tpInidcriteria = Criteria.where("inid").in(dependencies).and("tp").is(timePeriodId);
 		andExpression.add(tpInidcriteria);
 		criteria.andOperator(andExpression.toArray(new Criteria[andExpression.size()]));
 		
@@ -729,7 +777,7 @@ public class MongoAggregationService {
 //			criteria.andOperator(andExpression.toArray(new Criteria[andExpression.size()]));
 		}
 		
-		Criteria tpInidCriteria = Criteria.where("inid").in(dep).and("tp").is(timePeriodId).and("isValid").is(true).and("latest").is(true).and("duplicate").is(false);
+		Criteria tpInidCriteria = Criteria.where("inid").in(dep).and("tp").is(timePeriodId);
 		andExpression.add(tpInidCriteria);
 		criteria.andOperator(andExpression.toArray(new Criteria[andExpression.size()]));
 		
@@ -831,14 +879,43 @@ public class MongoAggregationService {
 		return Aggregation.newAggregation(matchOperation,projectionOperation,projectionOperation1,groupOperation);
 	}
 	
-	public Aggregation getTableAggregationResults(Integer formId, String area, String collection, String path, String table,String name) {
-		MatchOperation matchOperation = Aggregation.match(Criteria.where("formId").is(formId).and("timePeriod.timePeriodId").is(timePeriodId).and("isValid").is(true).and("latest").is(true).and("duplicate").is(false));
+	public Aggregation getTableAggregationResults(Integer formId, String area, String collection, String path, String table,String name,String conditions) {
+		
+//		area -> data.f1q_district,data.f1FacilityType,data.f1FacilityLevel
+
+		List<String> condarr=new ArrayList<>();
+		if(!conditions.equals("null")&&!conditions.isEmpty())
+			condarr=Arrays.asList(conditions.split(";"));
+		Criteria matchCriteria=Criteria.where("formId").is(formId).and("timePeriod.timePeriodId").is(timePeriodId).and("isValid").is(true).and("latest").is(true).and("duplicate").is(false);
+		if(!condarr.isEmpty()) {
+		condarr.forEach(_cond->{
+			matchCriteria.andOperator(Criteria.where(_cond.split(":")[0].split("\\(")[1]).is(Integer.parseInt(_cond.split(":")[1].split("\\)")[0])));
+		});
+		}
+		String pathString="";
+		path="data."+table+"."+path;
+		path=path.replace("+", "+data."+table+".");
+		path=path.replace("-", "-data."+table+".");
+		pathString=path;
+		
+		MatchOperation matchOperation = Aggregation.match(matchCriteria);
 		ProjectionOperation projectionOperation=Aggregation.project().and("data").as("data");
 		UnwindOperation unwindOperation = Aggregation.unwind("data."+table);
-//		GroupOperation groupOperation= Aggregation.group(area).sum("data."+table+"."+path).as("value");
 		
-		GroupOperation groupOperation= Aggregation.group(area.split(",")).sum("data."+table+"."+path).as("value");
-		return Aggregation.newAggregation(matchOperation,projectionOperation,unwindOperation,groupOperation);
+		ProjectionOperation pop=null;
+		GroupOperation groupOperation=null;
+		
+		if(pathString.contains("+")||pathString.contains("-")) {
+			
+			pop=Aggregation.project().andInclude(area.split(",")).andExpression(pathString).as("value1");
+			area = area.replaceAll("data.", "");
+			
+			groupOperation= Aggregation.group(area.split(",")).sum("value1").as("value");
+			return Aggregation.newAggregation(matchOperation,projectionOperation,unwindOperation,pop,groupOperation);
+		}else {
+			groupOperation= Aggregation.group(area.split(",")).sum("data."+table+"."+path).as("value");
+			return Aggregation.newAggregation(matchOperation,projectionOperation,unwindOperation,groupOperation);
+		}
 	}
 	
 	private Aggregation getTableCountResults(Integer formId, String area, String collection, String path, String table,String _rule,String name) {
@@ -993,34 +1070,53 @@ public class MongoAggregationService {
 		ProjectionOperation projectionOperation = null;
 		GroupOperation groupOperation = null;
 		ProjectionOperation projectionOperation2 = null;
-//		GroupOperation groupOperation2 = null;
+		GroupOperation groupOperation2 = null;
 
 		ProjectionOperation projectionOperation3 = null;
 		if (path.equals("")) {
 			matchOperation = Aggregation.match(Criteria.where("formId").is(formId).and("timePeriod.timePeriodId").is(timePeriodId).and("isValid").is(true).and("latest").is(true).and("duplicate").is(false));
-			projectionOperation = Aggregation.project().and("data").as("data");
+			/*projectionOperation = Aggregation.project().and("data").as("data");
 			groupOperation = Aggregation.group(query.split(":")[1], area).count().as("totalcount");
 			projectionOperation2 = Aggregation.project(area.split("\\.")[1])
 					.and(when(where("totalcount").gt(1)).then(1).otherwise(0)).as("repeatCount");
 //				groupOperation2 = Aggregation.group(area.split("\\.")[1]).count().as("dataValue");
 
 			projectionOperation3 = Aggregation.project().and(area.split("\\.")[1]).as(area.split("\\.")[1])
-					.and(when(where("repeatCount").is(1)).then(Sum.sumOf("repeatCount")).otherwise(0)).as("dataValue");
+					.and(when(where("repeatCount").is(1)).then(Sum.sumOf("repeatCount")).otherwise(0)).as("dataValue");*/
+			projectionOperation = Aggregation.project().and("data").as("data");
+			groupOperation = Aggregation.group(query.split(":")[1], area).count().as("totalcount");
+			projectionOperation2 = Aggregation.project(area.split("\\.")[1])
+					.and(when(where("totalcount").gt(1)).then(1).otherwise(0))
+					.as("repeatCount");
+			groupOperation2 = Aggregation.group(area.split("\\.")[1]).sum("repeatCount").as("dataValue");
+			
+			projectionOperation3 = Aggregation.project().and("_id").as(area.split("\\.")[1])
+					.and("dataValue").as("dataValue");
 
 		} else {
 			matchOperation = Aggregation.match(Criteria.where("formId").is(formId).and("data." + path).in(valueList).and("timePeriod.timePeriodId").is(timePeriodId).and("isValid").is(true).and("latest").is(true).and("duplicate").is(false));
-			projectionOperation = Aggregation.project().and("data").as("data");
+			/*projectionOperation = Aggregation.project().and("data").as("data");
 			groupOperation = Aggregation.group(query.split(":")[1], "data." + path, area).count().as("totalcount");
 			projectionOperation2 = Aggregation.project(path, area.split("\\.")[1])
 					.and(when(where("totalcount").gt(1)).then(1).otherwise(0)).as("repeatCount");
 //				groupOperation2 = Aggregation.group(path, area.split("\\.")[1]).count().as("dataValue");
 
 			projectionOperation3 = Aggregation.project().and(area.split("\\.")[1]).as(area.split("\\.")[1])
-					.and(when(where("repeatCount").is(1)).then(Sum.sumOf("repeatCount")).otherwise(0)).as("dataValue");
+					.and(when(where("repeatCount").is(1)).then(Sum.sumOf("repeatCount")).otherwise(0)).as("dataValue");*/
+			projectionOperation = Aggregation.project().and("data").as("data");
+			groupOperation = Aggregation.group(query.split(":")[1], "data."+path, area).count()
+					.as("totalcount");
+			projectionOperation2 = Aggregation.project(path, area.split("\\.")[1])
+					.and(when(where("totalcount").gt(1)).then(1).otherwise(0))
+					.as("repeatCount");
+			groupOperation2 = Aggregation.group(path, area.split("\\.")[1]).sum("repeatCount").as("dataValue");
+			
+			projectionOperation3 = Aggregation.project().and("_id."+area.split("\\.")[1]).as(area.split("\\.")[1])
+					.and("dataValue").as("dataValue");
 
 		}
 
-		return Aggregation.newAggregation(matchOperation, projectionOperation, groupOperation, projectionOperation2,
+		return Aggregation.newAggregation(matchOperation, projectionOperation, groupOperation, projectionOperation2, groupOperation2,
 				projectionOperation3);
 
 	}

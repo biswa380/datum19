@@ -30,7 +30,10 @@ public class MongoAggregationController {
 	
 	@GetMapping("/mongoAggregate")
 	public String getMongoAggregatedData(@RequestParam("tp") Integer tp,@RequestParam("periodicity") String periodicity) {
+		
+//		System.out.println("called through rest api");
 		return mongoAggregationService.aggregate(tp,periodicity);
+//		return "aggregated";
 	}
 	
 	@GetMapping("/aggregatepercent")

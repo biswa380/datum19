@@ -6,6 +6,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.List;
 import java.util.TimeZone;
 
 import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
@@ -13,10 +14,10 @@ import org.sdrc.datum19.document.TimePeriod;
 import org.sdrc.datum19.repository.TimePeriodRepository;
 import org.sdrc.datum19.service.MongoAggregationService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 
 /*
  * author : Biswabhusan Pradhan
@@ -25,7 +26,7 @@ import org.springframework.web.bind.annotation.GetMapping;
  */
 
 @Controller
-@EnableScheduling
+//@EnableScheduling
 public class DAUS19JobController {
 	
 	@Autowired
@@ -35,17 +36,29 @@ public class DAUS19JobController {
 	@Autowired
 	private MongoAggregationService mongoAggregationService;
 	
-	private SimpleDateFormat simpleDateformater = new SimpleDateFormat("yyyy-MM-dd");
-	private DateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
-	@Scheduled(cron="0 0 0 11 * ?")
-	@GetMapping("/runJob")
-	public void runMonthlyJob() throws ParseException, InvalidFormatException, IOException {
-		TimePeriod tp=getTimePeriodForAggregation();
-//		aggregationService.aggregateDependencies(tp.getTimePeriodId(), "monthly");
-		mongoAggregationService.aggregate(tp.getTimePeriodId(), "monthly");
+	
+	@GetMapping("/")
+	@ResponseBody 
+	public String welcome() {
+		return "WELCOME TO SI-RMNCHA AGGREGATE INSTANCE";
 	}
 	
-	@Scheduled(cron="0 0 0 10 JAN,APR,JUL,OCT ?")
+	private SimpleDateFormat simpleDateformater = new SimpleDateFormat("yyyy-MM-dd");
+	private DateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+//	@Scheduled(cron="0 0 0 11 * ?")//monthly cron
+//	@Scheduled(cron="0 30 3 1/1 * ?")//daily cron
+	@GetMapping("/runJob")
+	@ResponseBody 
+	public String runMonthlyJob() throws ParseException, InvalidFormatException, IOException {
+//		TimePeriod tp=getTimePeriodForAggregation(); 
+		for (TimePeriod tp : getCurrentTimePeriodForAggregation()) { //get only last tp after uat instead of 2tps
+			mongoAggregationService.aggregate(tp.getTimePeriodId(), "monthly");
+		}
+	
+		return "aggregation completed";
+	}
+	
+	/*@Scheduled(cron="0 0 0 10 JAN,APR,JUL,OCT ?")
 	@GetMapping("/runQuarterlyJob")
 	public void runQuarterlyJob() throws ParseException, InvalidFormatException, IOException {
 		TimePeriod tp=getQuarterForAggregation();
@@ -59,10 +72,9 @@ public class DAUS19JobController {
 		TimePeriod tp=getYearForAggregation();
 //		aggregationService.aggregateDependencies(tp.getTimePeriodId(), "yearly");
 		mongoAggregationService.aggregate(tp.getTimePeriodId(), "once");
-	}
+	}*/
 	
 	public TimePeriod getYearForAggregation() throws ParseException {
-		// TODO Auto-generated method stub
 		Calendar endDateCalendar = Calendar.getInstance();
 		endDateCalendar.add(Calendar.MONTH, -1);
 		endDateCalendar.set(Calendar.DATE, 1);
@@ -119,14 +131,20 @@ public class DAUS19JobController {
 		
 		Calendar startDateCalendar1 = Calendar.getInstance();
 		startDateCalendar1.add(Calendar.MONTH, -1);
-		startDateCalendar1.set(Calendar.DATE, 1);
+		startDateCalendar1.set(Calendar.DATE, 15);
 		Date startDate1 = (Date) formatter.parse(simpleDateformater.format(startDateCalendar1.getTime()) + " 00:00:00.000");
 		String sd=toISO8601UTC(new java.util.Date(startDate1.getTime()));
 		String ed=toISO8601UTC(new java.util.Date(endDate.getTime()));
 		
-//		TimePeriod timePeriod = timePeriodRepository.getTimePeriod(cd);
-		TimePeriod timePeriod = timePeriodRepository.getTimePeriod(sd, ed);
+		TimePeriod timePeriod = timePeriodRepository.getCurrentTimePeriod(startDate1, "1");
+//		TimePeriod timePeriod = timePeriodRepository.getTimePeriod(sd, ed);
 		return timePeriod;
+	}
+	
+	//get last 2 tps
+	public List<TimePeriod> getCurrentTimePeriodForAggregation() throws ParseException {
+		return timePeriodRepository.findTop2ByPeriodicityOrderByStartDateDesc("1");
+//		return timePeriodRepository.findAll();
 	}
 	
 	public static String toISO8601UTC(Date date) {
